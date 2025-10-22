@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  wp:
+    image: wordpress:php8.1
+    container_name: wp
+    volumes:
+      # - ./wp-content/themes:/var/www/html/wp-content/themes
+      # - .:/var/www/html
+      - share-html:/var/www/html
+      # Bind-mount local wp-config.php so the container uses the edited file in this repo
+      - ./wp-config.php:/var/www/html/wp-config.php:ro
+    ports:
+      - 8000:80
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: example
+      WORDPRESS_DB_NAME: wordpress
+    depends_on:
+      - db
+  db:
+    image: mysql:8.3.0
+    container_name: db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+      MYSQL_DATABASE: wordpress
+    volumes:
+      - ./config:/docker-entrypoint-initdb.d
+    ports:
+      - 3306:3306
+volumes:
+  share-html:
+  db_data:
