@@ -1,10 +1,16 @@
+const colors = require('./colors');
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ['./App.{js,ts,tsx}', './components/**/*.{js,ts,tsx}'],
+  // include all app files so NativeWind can pick up className usage
+  content: ['./**/*.{js,jsx,ts,tsx}'],
 
   presets: [require('nativewind/preset')],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        ...colors,
+      },
+    },
   },
   plugins: [],
 };
