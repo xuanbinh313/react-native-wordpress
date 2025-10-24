@@ -1,7 +1,7 @@
 import { gql, TypedDocumentNode } from '@apollo/client';
 import { useQuery } from '@apollo/client/react';
 import React from 'react';
-import { Image, ScrollView, Text, View } from 'react-native';
+import { FlatList, Image, ScrollView, Text, View } from 'react-native';
 import { EditScreenInfo } from './EditScreenInfo';
 
 type ScreenContentProps = {
@@ -18,6 +18,10 @@ type GetProductsQuery = {
         id: string;
         name: string;
         description: string;
+        image?: {
+          altText: string;
+          sourceUrl: string;
+        };
       };
     }>;
   };
@@ -48,19 +52,27 @@ export const ScreenContent = ({ title, path, children }: ScreenContentProps) => 
     <ScrollView contentContainerStyle={{ alignItems: 'center', paddingVertical: 16 }}>
       <Text className={styles.title}>{title}</Text>
       {loading ? <Text>Loading...</Text> : null}
-      {products.edges.map(({ node }: any) => (
-        <View key={node.id} className="my-2 w-4/5 rounded-lg border border-gray-300 p-4">
-          <Text className="text-lg font-semibold">{node.name}</Text>
-          <Text className="text-gray-600">{node.description}</Text>
-          {node.image?.sourceUrl ? (
-            <Image
-              className="w-full h-48 rounded-md mt-2"
-              source={{ uri: node.image.sourceUrl }}
-              resizeMode="cover"
-            />
-          ) : null}
-        </View>
-      ))}
+      <FlatList
+        className="w-full"
+        data={products.edges}
+        keyExtractor={({ node }: any) => node.id}
+        renderItem={({ item }) => {
+          const { node } = item;
+          return (
+            <View key={node.id} className="my-2 w-4/5 rounded-lg border border-gray-300 p-4">
+              <Text className="text-lg font-semibold">{node.name}</Text>
+              <Text className="text-gray-600">{node.description}</Text>
+              {node?.image?.sourceUrl ? (
+                <Image
+                  className="mt-2 h-48 w-full rounded-md"
+                  source={{ uri: node.image.sourceUrl }}
+                  resizeMode="cover"
+                />
+              ) : null}
+            </View>
+          );
+        }}
+      />
       <View className={styles.separator} />
       <EditScreenInfo path={path} />
       {children}
