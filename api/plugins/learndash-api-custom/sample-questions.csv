@@ -1,0 +1,6 @@
+title,content,type,points,media,answer1,correct1,points1,answer2,correct2,points2,answer3,correct3,points3,answer4,correct4,points4
+Question 1,What is the capital of France?,single,1,01.mp3,Paris,true,1,London,false,0,Berlin,false,0,Madrid,false,0
+Question 2,Which programming language is used for web development?,single,1,02.mp3,JavaScript,true,1,Python,false,0,Java,false,0,C++,false,0
+Question 3,What is 2 + 2?,single,1,03.mp3,4,true,1,3,false,0,5,false,0,6,false,0
+Question 4,What is the largest planet in our solar system?,single,1,04.mp3,Jupiter,true,1,Saturn,false,0,Mars,false,0,Earth,false,0
+Question 5,Who wrote Romeo and Juliet?,single,1,05.mp3,Shakespeare,true,1,Dickens,false,0,Hemingway,false,0,Tolkien,false,0

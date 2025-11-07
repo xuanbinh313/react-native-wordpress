@@ -7,6 +7,7 @@ services:
     volumes:
       # - ./wp-content/themes:/var/www/html/wp-content/themes
       - ./plugins/learn-dash-space-repetition:/var/www/html/wp-content/plugins/learn-dash-space-repetition
+      - ./plugins/learndash-api-custom:/var/www/html/wp-content/plugins/learndash-api-custom
       - ./debug.log:/var/www/html/wp-content/debug.log
       # - .:/var/www/html
       - share-html:/var/www/html
