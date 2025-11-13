@@ -108,9 +108,10 @@ class LD_SR_Anki_Importer
      * @param string $file_path Path to uploaded .apkg or .zip file
      * @param int $user_id WordPress user ID
      * @param string $quiz_title Title for the new quiz
+     * @param array $deck_configs Deck configurations with field mappings and question types
      * @return array Result with success status, quiz_id, and statistics
      */
-    public function import_deck($file_path, $user_id, $quiz_title = '')
+    public function import_deck($file_path, $user_id, $quiz_title = '', $deck_configs = array())
     {
         $this->errors = array();
 
@@ -159,18 +160,56 @@ class LD_SR_Anki_Importer
         $media_dir = $user_import_dir . '/collection.media';
         $wp_media_dir = $this->copy_media_files($media_dir, $user_id);
 
-        // Create LearnDash quiz and questions
-        $import_result = $this->create_learndash_quiz(
-            $deck_data['notes'],
-            $user_id,
-            $quiz_title,
-            $wp_media_dir
+        // Group notes by deck_id for creating separate quizzes
+        $notes_by_deck = array();
+        foreach ($deck_data['notes'] as $note) {
+            $deck_id = $note['deck_id'];
+            $deck_name = $note['deck_name'];
+            
+            if (!isset($notes_by_deck[$deck_id])) {
+                $notes_by_deck[$deck_id] = array(
+                    'deck_name' => $deck_name,
+                    'deck_id' => $deck_id,
+                    'notes' => array()
+                );
+            }
+            
+            $notes_by_deck[$deck_id]['notes'][] = $note;
+        }
+
+        // Create or update quizzes for each deck
+        $results = array();
+        $total_created = 0;
+        $total_skipped = 0;
+
+        foreach ($notes_by_deck as $deck_id => $deck_info) {
+            $deck_title = !empty($quiz_title) ? $quiz_title : $deck_info['deck_name'];
+            
+            $import_result = $this->create_or_update_learndash_quiz(
+                $deck_info['notes'],
+                $user_id,
+                $deck_title,
+                $deck_id,
+                $wp_media_dir,
+                $deck_configs
+            );
+            
+            if ($import_result['success']) {
+                $results[] = $import_result;
+                $total_created += $import_result['created_questions'];
+                $total_skipped += $import_result['skipped_questions'];
+            }
+        }
+
+        // Return summary of all imports
+        return array(
+            'success' => true,
+            'quizzes' => $results,
+            'total_quizzes' => count($results),
+            'total_created_questions' => $total_created,
+            'total_skipped_questions' => $total_skipped,
+            'media_url' => $wp_media_dir ? $wp_media_dir['url'] : null
         );
-
-        // Clean up temporary directory (optional - keep for debugging)
-        // $this->cleanup_directory($user_import_dir);
-
-        return $import_result;
     }
 
     /**
@@ -207,7 +246,10 @@ class LD_SR_Anki_Importer
             $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
             // Get all notes
-            $notes_query = $db->query("SELECT id, mid, flds, tags FROM notes ORDER BY id");
+            $notes_query = $db->query("SELECT n.id, n.mid, n.flds, n.sfld, n.tags, d.name AS deck_name, c.did FROM notes AS n
+            INNER JOIN cards AS c ON n.id = c.nid
+            INNER JOIN decks AS d ON c.did = d.id
+            ORDER BY n.id");
             $notes = $notes_query->fetchAll(PDO::FETCH_ASSOC);
 
             if (empty($notes)) {
@@ -224,6 +266,8 @@ class LD_SR_Anki_Importer
                 $parsed_notes[] = array(
                     'id' => $note['id'],
                     'mid' => $note['mid'],
+                    'deck_name' => $note['deck_name'],
+                    'deck_id' => $note['did'],
                     'question' => isset($fields[0]) ? $fields[0] : '',
                     'answer' => isset($fields[1]) ? $fields[1] : '',
                     'extra' => isset($fields[2]) ? $fields[2] : '',
@@ -253,11 +297,10 @@ class LD_SR_Anki_Importer
             $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
             // Get collection metadata (contains models and decks info)
+            $notetypes = $db->query("SELECT id,name FROM notetypes");
+            $notetypes_data = $notetypes->fetchAll(PDO::FETCH_ASSOC);
             $col_query = $db->query("SELECT models, decks FROM col LIMIT 1");
             $col_data = $col_query->fetch(PDO::FETCH_ASSOC);
-
-            $models = array();
-            $decks = array();
 
             if ($col_data && !empty($col_data['models'])) {
                 $models_json = json_decode($col_data['models'], true);
@@ -278,7 +321,7 @@ class LD_SR_Anki_Importer
             }
 
             // Get all notes grouped by mid
-            $notes_query = $db->query("SELECT id, mid, flds, tags FROM notes ORDER BY mid, id");
+            $notes_query = $db->query("SELECT id, mid, flds, sfld, tags FROM notes ORDER BY mid, id");
             $notes = $notes_query->fetchAll(PDO::FETCH_ASSOC);
 
             if (empty($notes)) {
@@ -292,25 +335,29 @@ class LD_SR_Anki_Importer
             $grouped_notes = array();
             foreach ($notes as $note) {
                 $mid = $note['mid'];
+                $notetypes_filtered = array_filter($notetypes_data, fn($deck) => $deck['id'] == $mid);
+                $found_notetype = reset($notetypes_filtered);
+
+                $model_name = is_array($found_notetype)
+                    ? ($found_notetype['name'] ?? 'Unknown Model')
+                    : 'Unknown Model';
+                $fields = explode("\x1f", $note['flds']);
 
                 if (!isset($grouped_notes[$mid])) {
                     $grouped_notes[$mid] = array(
                         'mid' => $mid,
-                        'model_name' => isset($models[$mid]) ? $models[$mid] : 'Unknown Model',
-                        'notes' => array()
+                        'model_name' => $model_name,
+                        'notes' => array(),
+                        'total_fields' => count($fields)
                     );
                 }
 
                 // Parse fields
-                $fields = explode("\x1f", $note['flds']);
 
                 $grouped_notes[$mid]['notes'][] = array(
                     'id' => $note['id'],
-                    'question' => isset($fields[0]) ? $fields[0] : '',
-                    'answer' => isset($fields[1]) ? $fields[1] : '',
-                    'extra' => isset($fields[2]) ? $fields[2] : '',
-                    'tags' => trim($note['tags']),
-                    'preview' => $this->create_note_preview($fields)
+                    'fields' => $fields,
+                    'question' => $note['sfld'],
                 );
             }
 
@@ -386,9 +433,10 @@ class LD_SR_Anki_Importer
     }
 
     /**
-     * Create LearnDash quiz and questions from Anki notes
+     * Create or update LearnDash quiz and questions from Anki notes
+     * If a quiz with the same deck_name exists, it will be reused
      */
-    private function create_learndash_quiz($notes, $user_id, $quiz_title, $media_info)
+    private function create_or_update_learndash_quiz($notes, $user_id, $quiz_title, $deck_id, $media_info, $deck_configs = array())
     {
         global $wpdb;
 
@@ -396,45 +444,102 @@ class LD_SR_Anki_Importer
             $quiz_title = 'Imported Anki Deck - ' . date('Y-m-d H:i:s');
         }
 
-        // Create LearnDash Quiz post
-        $quiz_id = wp_insert_post(array(
-            'post_title' => $quiz_title,
-            'post_content' => 'Imported from Anki deck',
-            'post_status' => 'publish',
-            'post_type' => 'sfwd-quiz',
-            'post_author' => $user_id
+        // Check if quiz with this title already exists
+        $existing_quiz = $wpdb->get_row($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts} 
+            WHERE post_title = %s 
+            AND post_type = 'sfwd-quiz' 
+            AND post_status = 'publish'
+            LIMIT 1",
+            $quiz_title
         ));
 
-        if (is_wp_error($quiz_id)) {
-            return $this->error_response('Failed to create quiz: ' . $quiz_id->get_error_message());
+        if ($existing_quiz) {
+            // Use existing quiz
+            $quiz_id = $existing_quiz->ID;
+            $quiz_pro_id = get_post_meta($quiz_id, 'quiz_pro_id', true);
+            
+            if (!$quiz_pro_id) {
+                // If quiz exists but has no pro_id, create one
+                $quiz_pro_id = $this->create_quiz_pro($quiz_title);
+                if (!$quiz_pro_id) {
+                    return $this->error_response('Failed to create quiz pro entry for existing quiz');
+                }
+                update_post_meta($quiz_id, 'quiz_pro_id', $quiz_pro_id);
+                update_post_meta($quiz_id, 'quiz_pro_id_' . $quiz_pro_id, $quiz_pro_id);
+            }
+            
+            error_log("Anki Import: Reusing existing quiz '{$quiz_title}' (ID: {$quiz_id}, Pro ID: {$quiz_pro_id})");
+        } else {
+            // Create new LearnDash Quiz post
+            $quiz_id = wp_insert_post(array(
+                'post_title' => $quiz_title,
+                'post_content' => 'Imported from Anki deck (Deck ID: ' . $deck_id . ')',
+                'post_status' => 'publish',
+                'post_type' => 'sfwd-quiz',
+                'post_author' => $user_id
+            ));
+
+            if (is_wp_error($quiz_id)) {
+                return $this->error_response('Failed to create quiz: ' . $quiz_id->get_error_message());
+            }
+
+            // Create quiz in pro_quiz table
+            $quiz_pro_id = $this->create_quiz_pro($quiz_title);
+
+            if (!$quiz_pro_id) {
+                wp_delete_post($quiz_id, true);
+                return $this->error_response('Failed to create quiz pro entry');
+            }
+
+            // Link quiz post to pro quiz
+            update_post_meta($quiz_id, 'quiz_pro_id', $quiz_pro_id);
+            update_post_meta($quiz_id, 'quiz_pro_id_' . $quiz_pro_id, $quiz_pro_id);
+
+            // Add required LearnDash quiz settings
+            $quiz_settings = array(
+                'sfwd-quiz_quiz_pro' => $quiz_pro_id,
+                'sfwd-quiz_lesson' => 0,
+                'sfwd-quiz_certificate' => 0,
+                'sfwd-quiz_threshold' => 80,
+                'sfwd-quiz_passingpercentage' => 80,
+                'sfwd-quiz_quiz_pro_id' => $quiz_pro_id,
+                'sfwd-quiz_quiz_pro_id_' . $quiz_pro_id => $quiz_pro_id,
+            );
+            update_post_meta($quiz_id, '_sfwd-quiz', $quiz_settings);
+            
+            error_log("Anki Import: Created new quiz '{$quiz_title}' (ID: {$quiz_id}, Pro ID: {$quiz_pro_id})");
         }
 
-        // Create quiz in pro_quiz table
-        $quiz_pro_id = $this->create_quiz_pro($quiz_title);
-
-        if (!$quiz_pro_id) {
-            wp_delete_post($quiz_id, true);
-            return $this->error_response('Failed to create quiz pro entry');
-        }
-
-        // Link quiz post to pro quiz
-        update_post_meta($quiz_id, 'quiz_pro_id', $quiz_pro_id);
-        update_post_meta($quiz_id, 'quiz_pro_id_' . $quiz_pro_id, $quiz_pro_id);
+        // Store deck_id reference for future imports
+        update_post_meta($quiz_id, 'anki_deck_id', $deck_id);
 
         // Create questions
         $created_questions = 0;
         $skipped_questions = 0;
 
         foreach ($notes as $index => $note) {
+            // Get deck configuration for this note's model ID
+            $mid = $note['mid'];
+            $config = isset($deck_configs[$mid]) ? $deck_configs[$mid] : null;
+
+            // Build question and answer text based on field mappings
+            if ($config) {
+                $question_text = $this->build_text_from_mapping($note['raw_fields'], $config['questionMapping'], $media_info);
+                $answer_text = $this->build_text_from_mapping($note['raw_fields'], $config['answerMapping'], $media_info);
+                $question_type = $config['questionType'];
+            } else {
+                // Fallback to default behavior
+                $question_text = $this->process_media_references($note['question'], $media_info);
+                $answer_text = $this->process_media_references($note['answer'], $media_info);
+                $question_type = 'cloze_answer';
+            }
+
             // Skip if question is empty
-            if (empty(trim(strip_tags($note['question'])))) {
+            if (empty(trim(strip_tags($question_text)))) {
                 $skipped_questions++;
                 continue;
             }
-
-            // Process media references in question and answer
-            $question_text = $this->process_media_references($note['question'], $media_info);
-            $answer_text = $this->process_media_references($note['answer'], $media_info);
 
             // Create LearnDash question
             $question_result = $this->create_learndash_question(
@@ -443,7 +548,8 @@ class LD_SR_Anki_Importer
                 $question_text,
                 $answer_text,
                 $index,
-                $note['tags']
+                $note['tags'],
+                $question_type
             );
 
             if ($question_result) {
@@ -452,6 +558,10 @@ class LD_SR_Anki_Importer
                 $skipped_questions++;
             }
         }
+
+        // Clear any caches
+        wp_cache_delete($quiz_id, 'post_meta');
+        clean_post_cache($quiz_id);
 
         return array(
             'success' => true,
@@ -551,56 +661,12 @@ class LD_SR_Anki_Importer
     /**
      * Create LearnDash question using the correct ld_create_single_question function
      */
-    private function create_learndash_question($quiz_id, $quiz_pro_id, $question_text, $answer_text, $sort_order, $tags)
-    {
-        // Check if the function exists
-        if (!function_exists('ld_create_single_question')) {
-            error_log('LD Anki Import: ld_create_single_question function not found. Make sure learndash-api-custom plugin is active.');
-            // Fallback to direct insertion if function doesn't exist
-            return $this->create_learndash_question_fallback($quiz_id, $quiz_pro_id, $question_text, $answer_text, $sort_order, $tags);
-        }
-
-        // Get question title (strip HTML and limit length)
-        $title = wp_strip_all_tags($question_text);
-        if (strlen($title) > 100) {
-            $title = substr($title, 0, 100) . '...';
-        }
-
-        // Prepare question data in the format expected by ld_create_single_question
-        $question_data = array(
-            'title' => $title,
-            'content' => $question_text . "\n\n<hr>\n\n<strong>Answer:</strong>\n" . $answer_text,
-            'answers' => array(), // Empty for essay type
-            'points' => 1,
-            'type' => 'essay', // Essay type allows HTML content
-            'media' => '' // No media reference needed, already embedded in content
-        );
-
-        // Call the correct function
-        $result = ld_create_single_question($quiz_id, $quiz_pro_id, $question_data, '', array());
-
-        if (is_wp_error($result)) {
-            error_log('LD Anki Import: Failed to create question - ' . $result->get_error_message());
-            return false;
-        }
-
-        // Add tags if provided
-        if (!empty($tags) && isset($result['question_id'])) {
-            wp_set_post_terms($result['question_id'], explode(' ', $tags), 'post_tag');
-        }
-
-        return isset($result['pro_id']) ? $result['pro_id'] : false;
-    }
-
-    /**
-     * Fallback method for creating questions if ld_create_single_question is not available
-     */
-    private function create_learndash_question_fallback($quiz_id, $quiz_pro_id, $question_text, $answer_text, $sort_order, $tags)
+    private function create_learndash_question($quiz_id, $quiz_pro_id, $question_text, $answer_text, $sort_order, $tags, $question_type)
     {
         global $wpdb;
 
-        $title = wp_strip_all_tags(substr($question_text, 0, 100));
-        $content = $question_text . "\n\n<hr>\n\n<strong>Answer:</strong>\n" . $answer_text;
+        $title = wp_strip_all_tags(substr($question_text, 0, length: 100));
+        $content = $question_text;
         $current_user_id = get_current_user_id() ?: 1;
 
         // Get next sort order
@@ -626,7 +692,6 @@ class LD_SR_Anki_Importer
                 '__PHP_Incomplete_Class_Name' => 'WpProQuiz_Model_AnswerTypes',
             )
         );
-
         // Insert into wp_learndash_pro_quiz_question
         $result = $wpdb->insert(
             $wpdb->prefix . 'learndash_pro_quiz_question',
@@ -642,7 +707,7 @@ class LD_SR_Anki_Importer
                 'correct_same_text' => 0,
                 'tip_enabled' => 0,
                 'tip_msg' => '',
-                'answer_type' => 'cloze_answer',
+                'answer_type' => isset($question_type) ? $question_type : 'cloze_answer',
                 'show_points_in_box' => 0,
                 'answer_points_activated' => 0,
                 'answer_data' => serialize($answer_data),
@@ -763,6 +828,39 @@ class LD_SR_Anki_Importer
         );
 
         return $text;
+    }
+
+    /**
+     * Build text from field mapping string
+     * Mapping format: "0|1|2" joins fields 0, 1, and 2 together
+     * 
+     * @param array $fields Array of field values
+     * @param string $mapping Field indices separated by pipes (e.g., "0|1")
+     * @param array $media_info Media information for processing references
+     * @return string Combined and processed text
+     */
+    private function build_text_from_mapping($fields, $mapping, $media_info)
+    {
+        if (empty($mapping)) {
+            return '';
+        }
+
+        // Parse field indices from mapping string
+        $field_indices = array_map('trim', explode('|', $mapping));
+
+        // Collect field values
+        $parts = array();
+        foreach ($field_indices as $index) {
+            if (is_numeric($index) && isset($fields[$index])) {
+                $parts[] = $fields[$index];
+            }
+        }
+
+        // Join parts with line breaks
+        $text = implode("\n\n", array_filter($parts));
+
+        // Process media references
+        return $this->process_media_references($text, $media_info);
     }
 
     /**

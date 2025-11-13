@@ -209,6 +209,20 @@ class LearnDash_Spaced_Repetition
         $file = $_FILES['anki_file'];
         $quiz_title = isset($_POST['quiz_title']) ? sanitize_text_field($_POST['quiz_title']) : '';
         $user_id = get_current_user_id();
+        
+        // Parse deck configurations
+        $deck_configs = array();
+        if (isset($_POST['deck_configs'])) {
+            $deck_configs_json = json_decode(stripslashes($_POST['deck_configs']), true);
+            if (is_array($deck_configs_json)) {
+                // Convert from array of [mid, config] pairs to associative array
+                foreach ($deck_configs_json as $config_pair) {
+                    if (is_array($config_pair) && count($config_pair) === 2) {
+                        $deck_configs[$config_pair[0]] = $config_pair[1];
+                    }
+                }
+            }
+        }
 
         // Validate file type
         $allowed_extensions = array('zip', 'apkg');
@@ -230,7 +244,7 @@ class LearnDash_Spaced_Repetition
 
         // Import the deck
         $importer = new LD_SR_Anki_Importer();
-        $result = $importer->import_deck($temp_file, $user_id, $quiz_title);
+        $result = $importer->import_deck($temp_file, $user_id, $quiz_title, $deck_configs);
 
         // Clean up temp file
         if (file_exists($temp_file)) {
