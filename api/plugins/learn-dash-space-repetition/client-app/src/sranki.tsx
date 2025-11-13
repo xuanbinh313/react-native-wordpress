@@ -1,16 +1,16 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
+import './sranki.css'
+import SpacedRepetition from './components/SpacedRepetition.tsx'
 
 // Wait for DOM to be ready and container to exist
 const initApp = () => {
   const container = document.getElementById('ld-sr-container');
-  
+
   if (container) {
     createRoot(container).render(
       <StrictMode>
-        <App />
+        <SpacedRepetition />
       </StrictMode>,
     );
   } else {

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import QuestionContent from "./components/QuestionContent";
+import React, { useEffect, useState } from "react";
+const QuestionContent = React.lazy(() => import(/* webpackChunkName: "QuestionContent" */"./QuestionContent"));
 
 interface Quiz {
   quiz_id: number;
@@ -317,7 +317,7 @@ function App() {
     return (
       <>
         {questionData.title && <h3>{questionData.title}</h3>}
-        {questionData.question && <QuestionContent html={questionData.question} />}
+        {questionData.question && <React.Suspense fallback={<div>Loading...</div>}><QuestionContent html={questionData.question} /></React.Suspense>}
 
         {questionData.answers &&
           questionData.answers.length > 0 && (
@@ -327,9 +327,9 @@ function App() {
                   case "single":
                     return (
                       <label key={ans.id} className="answer-option">
-                        <input 
-                          type={"radio"} 
-                          name="user_answer" 
+                        <input
+                          type={"radio"}
+                          name="user_answer"
                           value={ans.id}
                           disabled={showAnswer}
                           onCopy={(e) => e.preventDefault()}
@@ -342,9 +342,9 @@ function App() {
                   case "multiple":
                     return (
                       <label key={ans.id} className="answer-option">
-                        <input 
-                          type={"checkbox"} 
-                          name="user_answer" 
+                        <input
+                          type={"checkbox"}
+                          name="user_answer"
                           value={ans.id}
                           disabled={showAnswer}
                           onCopy={(e) => e.preventDefault()}
@@ -360,11 +360,11 @@ function App() {
                     const text = ans.answer || '';
                     let lastIndex = 0;
                     let blankIndex = 0;
-                    
+
                     // Match all {text} patterns
                     const regex = /\{(.*?)\}/g;
                     let match;
-                    
+
                     while ((match = regex.exec(text)) !== null) {
                       // Add text before the blank
                       if (match.index > lastIndex) {
@@ -375,12 +375,12 @@ function App() {
                       blankIndex++;
                       lastIndex = regex.lastIndex;
                     }
-                    
+
                     // Add remaining text
                     if (lastIndex < text.length) {
                       parts.push({ type: 'text', content: text.slice(lastIndex) });
                     }
-                    
+
                     return (
                       <div key={ans.id} className="cloze-answer">
                         {parts.map((part, idx) => {
@@ -431,7 +431,7 @@ function App() {
         <h4>
           {submitResult.is_correct ? '✅ Correct!' : '❌ Incorrect'}
         </h4>
-        
+
         {!submitResult.is_correct && submitResult.correct_answers.length > 0 && (
           <div>
             <strong>Correct Answer(s):</strong>
@@ -445,12 +445,12 @@ function App() {
             </ul>
           </div>
         )}
-        
+
         <div className="auto-rating">
           <small>
             Auto-rated as: <strong>{submitResult.rating}</strong>
-            {submitResult.is_correct 
-              ? ' (You can adjust below if you want)' 
+            {submitResult.is_correct
+              ? ' (You can adjust below if you want)'
               : ' (You can adjust below if needed)'}
           </small>
         </div>
@@ -463,17 +463,17 @@ function App() {
     return (
       <div id="ld-sr-quiz-list">
         <h2>📚 Select a Quiz to Start Learning</h2>
-        
+
         {loading && (
           <div style={{ textAlign: "center", padding: "20px" }}>Loading quizzes...</div>
         )}
-        
+
         {!loading && quizzes.length === 0 && (
           <div style={{ textAlign: "center", padding: "20px" }}>
             <p>No quizzes available.</p>
           </div>
         )}
-        
+
         {!loading && quizzes.length > 0 && (
           <div className="quiz-list">
             {quizzes.map((quiz) => (
@@ -482,7 +482,7 @@ function App() {
                 <div className="quiz-info">
                   <span>📝 {quiz.question_count} questions</span>
                 </div>
-                
+
                 {quiz.questions.length > 0 && (
                   <details className="question-details">
                     <summary>View Questions</summary>
@@ -495,7 +495,7 @@ function App() {
                     </ul>
                   </details>
                 )}
-                
+
                 <button
                   className="ld-sr-btn ld-sr-start-btn"
                   onClick={() => handleStartQuiz(quiz)}

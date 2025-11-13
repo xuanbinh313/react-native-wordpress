@@ -1,0 +1,94 @@
+.ld-anki-import-container {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.form-group input[type="file"],
+.form-group input[type="text"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.deck-card {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.deck-card h4 {
+    margin: 0 0 10px 0;
+    color: #0073aa;
+}
+
+.deck-info {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+.note-preview {
+    background: #fff;
+    border-left: 3px solid #0073aa;
+    padding: 10px;
+    margin: 5px 0;
+    font-size: 13px;
+}
+
+.note-preview strong {
+    color: #333;
+}
+
+.notes-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 10px;
+}
+
+.toggle-notes {
+    cursor: pointer;
+    color: #0073aa;
+    text-decoration: underline;
+    font-size: 13px;
+}
+
+#ld-anki-import-status.success {
+    padding: 15px;
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 4px;
+    color: #155724;
+}
+
+#ld-anki-import-status.error {
+    padding: 15px;
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    color: #721c24;
+}
+
+#ld-anki-import-status.processing {
+    padding: 15px;
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    border-radius: 4px;
+    color: #0c5460;
+}

@@ -36,5 +36,11 @@ export default defineConfig({
     manifest: true, // 👈 bắt buộc để tạo manifest.json
     outDir: "../build", // 👈 thư mục output (nếu bạn muốn build ra plugin/build)
     emptyOutDir: true, // Xóa thư mục cũ trước khi build
+    rollupOptions: {
+      input: {
+        sranki: path.resolve(__dirname, "src/sranki.tsx"),
+        importAnki: path.resolve(__dirname, "src/importAnki.tsx"),
+      }
+    }
   },
 });
